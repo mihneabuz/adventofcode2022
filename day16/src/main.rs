@@ -29,18 +29,12 @@ fn hash_vec(v: &Vec<usize>) -> usize {
     v.iter().map(|x| 1 << x).sum()
 }
 
-fn _solve(
-    idx: usize,
-    time_remaining: u32,
-    opened: &mut Vec<usize>,
-    graph: &Graph,
-    cache: &mut Cache,
-) -> u32 {
-    if time_remaining == 0 {
+fn _solve(idx: usize, time: u32, opened: &mut Vec<usize>, graph: &Graph, cache: &mut Cache) -> u32 {
+    if time == 0 {
         return 0;
     }
 
-    let entry = (idx, time_remaining, hash_vec(opened));
+    let entry = (idx, time, hash_vec(opened));
     if let Some(res) = cache.get(&entry) {
         return *res;
     }
@@ -52,7 +46,7 @@ fn _solve(
         opened.push(idx);
         best = cmp::max(
             best,
-            node.0 * (time_remaining - 1) + _solve(idx, time_remaining - 1, opened, graph, cache),
+            node.0 * (time - 1) + _solve(idx, time - 1, opened, graph, cache),
         );
         opened.pop();
     }
@@ -60,7 +54,7 @@ fn _solve(
     for neigh in node.1.iter().copied() {
         best = cmp::max(
             best,
-            _solve(neigh, time_remaining - 1, opened, graph, cache),
+            _solve(neigh, time - 1, opened, graph, cache),
         );
     }
 
@@ -74,19 +68,12 @@ fn solve(idx: usize, time_remaining: u32, opened: &mut Vec<usize>, graph: &Graph
     _solve(idx, time_remaining, opened, graph, &mut cache)
 }
 
-fn _solve_2(
-    idx1: usize,
-    idx2: usize,
-    time_remaining: u32,
-    opened: &mut Vec<usize>,
-    graph: &Graph,
-    cache: &mut Cache,
-) -> u32 {
-    if time_remaining == 0 {
+fn _solve_2(idx1: usize, idx2: usize, time: u32, opened: &mut Vec<usize>, graph: &Graph, cache: &mut Cache) -> u32 {
+    if time == 0 {
         return 0;
     }
 
-    let entry = ((idx1 + 10) * (idx2 + 10), time_remaining, hash_vec(opened));
+    let entry = ((idx1 + 10) * (idx2 + 10), time, hash_vec(opened));
     if let Some(res) = cache.get(&entry) {
         return *res;
     }
@@ -104,8 +91,7 @@ fn _solve_2(
         opened.push(idx1);
         best = cmp::max(
             best,
-            (node1.0 + node2.0) * (time_remaining - 1)
-                + _solve_2(idx1, idx2, time_remaining - 1, opened, graph, cache),
+            (node1.0 + node2.0) * (time - 1) + _solve_2(idx1, idx2, time - 1, opened, graph, cache),
         );
         opened.pop();
         opened.pop();
@@ -116,8 +102,7 @@ fn _solve_2(
         for neigh2 in node2.1.iter().copied() {
             best = cmp::max(
                 best,
-                node1.0 * (time_remaining - 1)
-                    + _solve_2(idx1, neigh2, time_remaining - 1, opened, graph, cache),
+                node1.0 * (time - 1) + _solve_2(idx1, neigh2, time - 1, opened, graph, cache),
             );
         }
         opened.pop();
@@ -128,8 +113,7 @@ fn _solve_2(
         for neigh1 in node1.1.iter().copied() {
             best = cmp::max(
                 best,
-                node2.0 * (time_remaining - 1)
-                    + _solve_2(neigh1, idx2, time_remaining - 1, opened, graph, cache),
+                node2.0 * (time - 1) + _solve_2(neigh1, idx2, time - 1, opened, graph, cache),
             );
         }
         opened.pop();
@@ -137,7 +121,7 @@ fn _solve_2(
 
     for neigh1 in node1.1.iter().copied() {
         for neigh2 in node2.1.iter().copied() {
-            best = cmp::max(best, _solve_2(neigh1, neigh2, time_remaining - 1, opened, graph, cache));
+            best = cmp::max(best, _solve_2(neigh1, neigh2, time - 1, opened, graph, cache));
         }
     }
 
