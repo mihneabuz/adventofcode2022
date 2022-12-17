@@ -68,20 +68,11 @@ fn add_segment(segments: &mut Vec<(i32, i32)>, slice: (i32, i32)) {
 
 fn main() {
     let content = fs::read_to_string("input").unwrap();
+    let mut lines = content.lines();
 
-    let row = content.lines().next().unwrap().parse::<i32>().unwrap();
-    let max = content
-        .lines()
-        .skip(1)
-        .next()
-        .unwrap()
-        .parse::<i32>()
-        .unwrap();
-    let sensors = content
-        .lines()
-        .skip(2)
-        .map(parse_sensor)
-        .collect::<Vec<_>>();
+    let row = lines.next().unwrap().parse::<i32>().unwrap();
+    let max = lines.next().unwrap().parse::<i32>().unwrap();
+    let sensors = lines.map(parse_sensor).collect::<Vec<_>>();
 
     let mut beacons = sensors
         .iter()
@@ -113,10 +104,14 @@ fn main() {
             .for_each(|slice| add_segment(&mut segments, slice));
 
         for window in segments.windows(2) {
-            let (prev, curr) = unsafe { (window.get_unchecked(0), window.get_unchecked(1)) };
+            let (prev, curr) = (window[0], window[1]);
             if curr.0 == prev.1 + 2 && prev.1 < max {
                 res2 = (prev.1 + 1) as u64 * 4000000 + row as u64;
-                break 'outer;
+                break 'outer
+            }
+
+            if curr.1 > max {
+                break
             }
         }
     }
