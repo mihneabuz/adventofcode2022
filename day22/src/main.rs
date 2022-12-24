@@ -178,75 +178,46 @@ impl Solver {
         let n = self.cube.size;
         let mut pos = self.current;
 
+        let is_valid: Box<dyn Fn((usize, usize)) -> bool> = match self.facing {
+            Direction::Up    => Box::new(|(i, _): (usize, usize)| i > 0),
+            Direction::Down  => Box::new(|(i, _): (usize, usize)| i < n - 1),
+            Direction::Right => Box::new(|(_, j): (usize, usize)| j < n - 1),
+            Direction::Left  => Box::new(|(_, j): (usize, usize)| j > 0),
+        };
+
+        let after_permute: Box<dyn Fn((usize, usize)) -> (usize, usize)> = match self.facing {
+            Direction::Up    => Box::new(|(_, j): (usize, usize)| (n - 1, j)),
+            Direction::Down  => Box::new(|(_, j): (usize, usize)| (0, j)),
+            Direction::Right => Box::new(|(i, _): (usize, usize)| (i, 0)),
+            Direction::Left  => Box::new(|(i, _): (usize, usize)| (i, n - 1)),
+        };
+
         for _ in 0..count {
-            match self.facing {
-                Direction::Up => {
-                    if pos.0 > 0 {
-                        if self.cube.is_open((pos.0 - 1, pos.1)) {
-                            pos.0 -= 1;
-                        } else {
-                            break;
-                        }
-                    } else {
-                        self.cube.permute(Direction::Up);
-                        if !self.cube.is_open((n - 1, pos.1)) {
-                            self.cube.permute_back(Direction::Up);
-                            break;
-                        }
-                        pos.0 = n - 1;
-                    }
+
+            if is_valid(pos) {
+                let next_pos = match self.facing {
+                    Direction::Up => (pos.0 - 1, pos.1),
+                    Direction::Down => (pos.0 + 1, pos.1),
+                    Direction::Left => (pos.0, pos.1 - 1),
+                    Direction::Right => (pos.0, pos.1 + 1),
+                };
+
+                if !self.cube.is_open(next_pos) {
+                    break;
                 }
 
-                Direction::Down => {
-                    if pos.0 < n - 1 {
-                        if self.cube.is_open((pos.0 + 1, pos.1)) {
-                            pos.0 += 1;
-                        } else {
-                            break;
-                        }
-                    } else {
-                        self.cube.permute(Direction::Down);
-                        if !self.cube.is_open((0, pos.1)) {
-                            self.cube.permute_back(Direction::Down);
-                            break;
-                        }
-                        pos.0 = 0;
-                    }
+                pos = next_pos;
+
+            } else {
+                self.cube.permute(self.facing);
+                let next_pos = after_permute(pos);
+
+                if !self.cube.is_open(next_pos) {
+                    self.cube.permute_back(self.facing);
+                    break;
                 }
 
-                Direction::Right => {
-                    if pos.1 < n - 1 {
-                        if self.cube.is_open((pos.0, pos.1 + 1)) {
-                            pos.1 += 1;
-                        } else {
-                            break;
-                        }
-                    } else {
-                        self.cube.permute(Direction::Right);
-                        if !self.cube.is_open((pos.0, 0)) {
-                            self.cube.permute_back(Direction::Right);
-                            break;
-                        }
-                        pos.1 = 0;
-                    }
-                }
-
-                Direction::Left => {
-                    if pos.1 > 0 {
-                        if self.cube.is_open((pos.0, pos.1 - 1)) {
-                            pos.1 -= 1;
-                        } else {
-                            break;
-                        }
-                    } else {
-                        self.cube.permute(Direction::Left);
-                        if !self.cube.is_open((pos.0, n - 1)) {
-                            self.cube.permute_back(Direction::Left);
-                            break;
-                        }
-                        pos.1 = n - 1;
-                    }
-                }
+                pos = next_pos;
             }
         }
 
@@ -283,31 +254,38 @@ fn parse_row(row: &[&str], n: usize) -> Vec<Option<Face>> {
         .collect()
 }
 
-fn fold_cube(faces: &mut Vec<Vec<Option<Face>>>, pos: (usize, usize), cube: &mut Cube) {
+fn fold_cube(faces: &mut Vec<Vec<Option<Face>>>) -> Cube {
+    let first = faces[0].iter().position(|f| f.is_some()).unwrap();
+    let mut cube = Cube::new();
+    fold_cube_dfs(&mut faces.clone(), (0, first), &mut cube);
+    cube
+}
+
+fn fold_cube_dfs(faces: &mut Vec<Vec<Option<Face>>>, pos: (usize, usize), cube: &mut Cube) {
     if let Some(face) = faces[pos.0][pos.1].take() {
         cube.set_front(face);
 
-        if pos.0 > 0 && pos.1 < faces[pos.0 - 1].len() && faces[pos.0 - 1][pos.1].is_some() {
+        if pos.0 > 0 && pos.1 < faces[pos.0 - 1].len() {
             cube.permute(Direction::Up);
-            fold_cube(faces, (pos.0 - 1, pos.1), cube);
+            fold_cube_dfs(faces, (pos.0 - 1, pos.1), cube);
             cube.permute_back(Direction::Up);
         }
 
-        if pos.0 < faces.len() - 1 && pos.1 < faces[pos.0 + 1].len() && faces[pos.0 + 1][pos.1].is_some() {
+        if pos.0 < faces.len() - 1 && pos.1 < faces[pos.0 + 1].len() {
             cube.permute(Direction::Down);
-            fold_cube(faces, (pos.0 + 1, pos.1), cube);
+            fold_cube_dfs(faces, (pos.0 + 1, pos.1), cube);
             cube.permute_back(Direction::Down);
         }
 
         if pos.1 > 0 && faces[pos.0][pos.1 - 1].is_some() {
             cube.permute(Direction::Left);
-            fold_cube(faces, (pos.0, pos.1 - 1), cube);
+            fold_cube_dfs(faces, (pos.0, pos.1 - 1), cube);
             cube.permute_back(Direction::Left);
         }
 
         if pos.1 < faces[pos.0].len() - 1 && faces[pos.0][pos.1 + 1].is_some() {
             cube.permute(Direction::Right);
-            fold_cube(faces, (pos.0, pos.1 + 1), cube);
+            fold_cube_dfs(faces, (pos.0, pos.1 + 1), cube);
             cube.permute_back(Direction::Right);
         }
     }
@@ -323,12 +301,7 @@ fn main() {
         .map(|i| parse_row(&lines[i * n..(i + 1) * n], n))
         .collect::<Vec<_>>();
 
-    let first = faces[0].iter().position(|f| f.is_some()).unwrap();
-
-    let mut cube = Cube::new();
-    fold_cube(&mut faces.clone(), (0, first), &mut cube);
-
-    let mut solver = Solver::new(cube);
+    let mut solver = Solver::new(fold_cube(&mut faces));
 
     let mut stack = Vec::new();
     for char in instructions.trim().chars() {
