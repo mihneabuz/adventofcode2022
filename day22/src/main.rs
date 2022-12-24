@@ -1,82 +1,334 @@
 use std::fs;
 
-const EMPTY: u8 = 0;
-const OPEN: u8 = 1;
-const WALL: u8 = 2;
+const EMPTY: char = ' ';
+const OPEN: char = '.';
 
-enum Facing {
+type Face = Vec<Vec<char>>;
+
+#[derive(Copy, Clone)]
+enum Direction {
     Up,
+    Right,
     Down,
     Left,
-    Right,
 }
 
-fn parse_line(s: &str) -> Vec<u8> {
-    s.chars()
-        .map(|c| match c {
-            ' ' => EMPTY,
-            '.' => OPEN,
-            '#' => WALL,
-            _ => unreachable!(),
+impl Direction {
+    fn rotate_right(&mut self) {
+        *self = match self {
+            Direction::Up => Direction::Right,
+            Direction::Right => Direction::Down,
+            Direction::Down => Direction::Left,
+            Direction::Left => Direction::Up,
+        };
+    }
+
+    fn rotate_left(&mut self) {
+        *self = match self {
+            Direction::Up => Direction::Left,
+            Direction::Right => Direction::Up,
+            Direction::Down => Direction::Right,
+            Direction::Left => Direction::Down,
+        };
+    }
+}
+
+enum FaceType {
+    Front = 0,
+    Top = 1,
+    Right = 2,
+    Bottom = 3,
+    Left = 4,
+    Back = 5,
+}
+
+struct Cube {
+    faces: [Option<Face>; 6],
+    size: usize,
+}
+
+impl Cube {
+    pub fn new() -> Self {
+        Self {
+            faces: [None, None, None, None, None, None],
+            size: 0,
+        }
+    }
+
+    fn get_front(&self) -> Option<&Face> {
+        self.faces[FaceType::Front as usize].as_ref()
+    }
+
+    fn is_open(&self, pos: (usize, usize)) -> bool {
+        self.faces[FaceType::Front as usize].as_ref().unwrap()[pos.0][pos.1] == OPEN
+    }
+
+    fn set_front(&mut self, face: Face) {
+        self.size = face.len();
+        self.faces[FaceType::Front as usize] = Some(face);
+    }
+
+    fn permute(&mut self, dir: Direction) {
+        let front = self.faces[FaceType::Front as usize].take();
+
+        let mut top = self.faces[FaceType::Top as usize].take();
+        let mut right = self.faces[FaceType::Right as usize].take();
+        let mut bottom = self.faces[FaceType::Bottom as usize].take();
+        let mut left = self.faces[FaceType::Left as usize].take();
+        let mut back = self.faces[FaceType::Back as usize].take();
+
+        match dir {
+            Direction::Up => {
+                Cube::rotate_face_270(right.as_mut());
+                Cube::rotate_face_90(left.as_mut());
+
+                Cube::rotate_face_180(back.as_mut());
+                Cube::rotate_face_180(bottom.as_mut());
+
+                self.faces = [top, back, right, front, left, bottom];
+            }
+
+            Direction::Right => {
+                Cube::rotate_face_90(top.as_mut());
+                Cube::rotate_face_270(bottom.as_mut());
+
+                self.faces = [right, top, back, bottom, front, left];
+            }
+
+            Direction::Down => {
+                Cube::rotate_face_90(right.as_mut());
+                Cube::rotate_face_270(left.as_mut());
+
+                Cube::rotate_face_180(back.as_mut());
+                Cube::rotate_face_180(top.as_mut());
+
+                self.faces = [bottom, front, right, back, left, top];
+            }
+
+            Direction::Left => {
+                Cube::rotate_face_270(top.as_mut());
+                Cube::rotate_face_90(bottom.as_mut());
+
+                self.faces = [left, top, front, bottom, back, right];
+            }
+        }
+    }
+
+    fn permute_back(&mut self, dir: Direction) {
+        self.permute(match dir {
+            Direction::Up => Direction::Down,
+            Direction::Right => Direction::Left,
+            Direction::Down => Direction::Up,
+            Direction::Left => Direction::Right,
+        });
+    }
+
+    fn rotate_face_90(face: Option<&mut Face>) {
+        if let Some(face) = face {
+            let n = face.len() - 1;
+            Self::transform_face(face, |i, j| (n - j, i));
+        }
+    }
+
+    fn rotate_face_180(face: Option<&mut Face>) {
+        if let Some(face) = face {
+            let n = face.len() - 1;
+            Self::transform_face(face, |i, j| (n - i, n - j));
+        }
+    }
+
+    fn rotate_face_270(face: Option<&mut Face>) {
+        if let Some(face) = face {
+            let n = face.len() - 1;
+            Self::transform_face(face, |i, j| (j, n - i));
+        }
+    }
+
+    fn transform_face<F>(face: &mut Face, transform: F) where F: Fn(usize, usize) -> (usize, usize) {
+        let n = face.len();
+        let mut new_face = vec![vec![OPEN; n]; n];
+
+        for i in 0..n {
+            for j in 0..n {
+                let (ti, tj) = transform(i, j);
+                new_face[i][j] = face[ti][tj];
+            }
+        }
+
+        *face = new_face;
+    }
+}
+
+struct Solver {
+    cube: Cube,
+    current: (usize, usize),
+    facing: Direction,
+}
+
+impl Solver {
+    fn new(cube: Cube) -> Self {
+        Self {
+            cube,
+            current: (0, 0),
+            facing: Direction::Right,
+        }
+    }
+
+    fn move_forward(&mut self, count: usize) {
+        let n = self.cube.size;
+        let mut pos = self.current;
+
+        for _ in 0..count {
+            match self.facing {
+                Direction::Up => {
+                    if pos.0 > 0 {
+                        if self.cube.is_open((pos.0 - 1, pos.1)) {
+                            pos.0 -= 1;
+                        } else {
+                            break;
+                        }
+                    } else {
+                        self.cube.permute(Direction::Up);
+                        if !self.cube.is_open((n - 1, pos.1)) {
+                            self.cube.permute_back(Direction::Up);
+                            break;
+                        }
+                        pos.0 = n - 1;
+                    }
+                }
+
+                Direction::Down => {
+                    if pos.0 < n - 1 {
+                        if self.cube.is_open((pos.0 + 1, pos.1)) {
+                            pos.0 += 1;
+                        } else {
+                            break;
+                        }
+                    } else {
+                        self.cube.permute(Direction::Down);
+                        if !self.cube.is_open((0, pos.1)) {
+                            self.cube.permute_back(Direction::Down);
+                            break;
+                        }
+                        pos.0 = 0;
+                    }
+                }
+
+                Direction::Right => {
+                    if pos.1 < n - 1 {
+                        if self.cube.is_open((pos.0, pos.1 + 1)) {
+                            pos.1 += 1;
+                        } else {
+                            break;
+                        }
+                    } else {
+                        self.cube.permute(Direction::Right);
+                        if !self.cube.is_open((pos.0, 0)) {
+                            self.cube.permute_back(Direction::Right);
+                            break;
+                        }
+                        pos.1 = 0;
+                    }
+                }
+
+                Direction::Left => {
+                    if pos.1 > 0 {
+                        if self.cube.is_open((pos.0, pos.1 - 1)) {
+                            pos.1 -= 1;
+                        } else {
+                            break;
+                        }
+                    } else {
+                        self.cube.permute(Direction::Left);
+                        if !self.cube.is_open((pos.0, n - 1)) {
+                            self.cube.permute_back(Direction::Left);
+                            break;
+                        }
+                        pos.1 = n - 1;
+                    }
+                }
+            }
+        }
+
+        self.current = pos;
+    }
+
+    fn rotate_right(&mut self) {
+        Direction::rotate_right(&mut self.facing);
+    }
+
+    fn rotate_left(&mut self) {
+        Direction::rotate_left(&mut self.facing);
+    }
+}
+
+fn parse_face(face: &[&str]) -> Option<Face> {
+    let face: Face = face.iter().map(|&s| s.chars().collect()).collect();
+    if face[0][0] == EMPTY {
+        None
+    } else {
+        Some(face)
+    }
+}
+
+fn parse_row(row: &[&str], n: usize) -> Vec<Option<Face>> {
+    (0..row[0].len() / n)
+        .map(|i| {
+            parse_face(
+                &row.iter()
+                    .map(|r| &r[i * n..(i + 1) * n])
+                    .collect::<Vec<_>>(),
+            )
         })
         .collect()
 }
 
-fn rotate_right(f: Facing) -> Facing {
-    match f {
-        Facing::Up => Facing::Right,
-        Facing::Down => Facing::Left,
-        Facing::Left => Facing::Up,
-        Facing::Right => Facing::Down,
-    }
-}
+fn fold_cube(faces: &mut Vec<Vec<Option<Face>>>, pos: (usize, usize), cube: &mut Cube) {
+    if let Some(face) = faces[pos.0][pos.1].take() {
+        cube.set_front(face);
 
-fn rotate_left(f: Facing) -> Facing {
-    match f {
-        Facing::Up => Facing::Left,
-        Facing::Down => Facing::Right,
-        Facing::Left => Facing::Down,
-        Facing::Right => Facing::Up,
-    }
-}
-
-fn debug(map: &[Vec<u8>], current: (usize, usize), facing: Facing) {
-    for (i, line) in map.iter().enumerate() {
-        for (j, &b) in line.iter().enumerate() {
-            let c = if current == (i, j) {
-                match facing {
-                    Facing::Up => '^',
-                    Facing::Down => 'v',
-                    Facing::Left => '<',
-                    Facing::Right => '>',
-                }
-            } else {
-                match b {
-                    EMPTY => ' ',
-                    OPEN => '.',
-                    WALL => '#',
-                    _ => unreachable!(),
-                }
-            };
-            print!("{}", c);
+        if pos.0 > 0 && pos.1 < faces[pos.0 - 1].len() && faces[pos.0 - 1][pos.1].is_some() {
+            cube.permute(Direction::Up);
+            fold_cube(faces, (pos.0 - 1, pos.1), cube);
+            cube.permute_back(Direction::Up);
         }
-        println!()
+
+        if pos.0 < faces.len() - 1 && pos.1 < faces[pos.0 + 1].len() && faces[pos.0 + 1][pos.1].is_some() {
+            cube.permute(Direction::Down);
+            fold_cube(faces, (pos.0 + 1, pos.1), cube);
+            cube.permute_back(Direction::Down);
+        }
+
+        if pos.1 > 0 && faces[pos.0][pos.1 - 1].is_some() {
+            cube.permute(Direction::Left);
+            fold_cube(faces, (pos.0, pos.1 - 1), cube);
+            cube.permute_back(Direction::Left);
+        }
+
+        if pos.1 < faces[pos.0].len() - 1 && faces[pos.0][pos.1 + 1].is_some() {
+            cube.permute(Direction::Right);
+            fold_cube(faces, (pos.0, pos.1 + 1), cube);
+            cube.permute_back(Direction::Right);
+        }
     }
-    println!()
 }
 
 fn main() {
-    let content = fs::read_to_string("example").unwrap();
+    let content = fs::read_to_string("input").unwrap();
     let (map, instructions) = content.split_once("\n\n").unwrap();
+    let n = map.split_whitespace().map(|s| s.len()).min().unwrap();
 
-    let map = map.lines().map(parse_line).collect::<Vec<_>>();
-    let start = (0, map[0].iter().enumerate().find(|e| *e.1 == OPEN).unwrap().0);
-    let facing = Facing::Right;
+    let lines = map.lines().collect::<Vec<_>>();
+    let mut faces = (0..lines.len() / n)
+        .map(|i| parse_row(&lines[i * n..(i + 1) * n], n))
+        .collect::<Vec<_>>();
 
-    debug(&map, start, facing);
-    println!("{:?}", start);
+    let first = faces[0].iter().position(|f| f.is_some()).unwrap();
 
-    println!("{}", instructions.trim_end());
+    let mut cube = Cube::new();
+    fold_cube(&mut faces.clone(), (0, first), &mut cube);
+
+    let mut solver = Solver::new(cube);
 
     let mut stack = Vec::new();
     for char in instructions.trim().chars() {
@@ -86,12 +338,44 @@ fn main() {
         }
 
         let forward = String::from_iter(stack.drain(..)).parse::<usize>().unwrap();
-        println!("{}", forward);
+        solver.move_forward(forward);
 
         match char {
-            'R' => { facing = rotate_right(facing) }
-            'L' => println!("left"),
-            _ => unreachable!()
+            'R' => solver.rotate_right(),
+            'L' => solver.rotate_left(),
+            _ => unreachable!(),
+        }
+    }
+
+    if let Ok(forward) = String::from_iter(stack.drain(..)).parse::<usize>() {
+        solver.move_forward(forward);
+    }
+
+    'outer: for (i, row) in faces.iter_mut().enumerate() {
+        for (j, maybe) in row.iter_mut().enumerate().filter(|(_, f)| f.is_some()) {
+            let face = maybe.as_mut().unwrap();
+            let mut pos = solver.current;
+            let mut facing = solver.facing;
+
+            for _ in 0..4 {
+                if face == solver.cube.get_front().unwrap() {
+                    let final_pos = (i * n + pos.0 + 1, j * n + pos.1 + 1);
+
+                    let facing_res = match facing {
+                        Direction::Right => 0,
+                        Direction::Down => 1,
+                        Direction::Left => 2,
+                        Direction::Up => 3,
+                    };
+
+                    println!("{}", 1000 * final_pos.0 + 4 * final_pos.1 + facing_res);
+                    break 'outer;
+                }
+
+                Cube::rotate_face_90(Some(face));
+                Direction::rotate_left(&mut facing);
+                pos = (n - 1 - pos.1, pos.0);
+            }
         }
     }
 }
